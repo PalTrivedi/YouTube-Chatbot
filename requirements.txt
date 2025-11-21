@@ -1,11 +1,30 @@
+streamlit
 python-dotenv
-youtube-transcript-api 
+
+# Whisper + audio
+openai-whisper
+ffmpeg-python
+
+# yt-dlp for YouTube downloading
+yt-dlp
+
+# LangChain Core
 langchain
 langchain-core
-langchain-community 
-langchain-google-genai 
-langchain_chroma 
-chromadb
-langchain-text-splitters
-streamlit
+langchain-community
+
+# LangGraph (state machine + SQLite checkpointing)
+langgraph
+langgraph-checkpoint
+
+# Google Gemini integration
+langchain-google-genai
+
+# Vector storage
 faiss-cpu
+tiktoken
+
+# Utility packages
+numpy
+requests
+sentence-transformers
