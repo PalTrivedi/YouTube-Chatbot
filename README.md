@@ -1,91 +1,151 @@
-# YouTube-Chatbot
+# 🎥 YouTube-Chatbot — Chat With Any YouTube Video
 
-YouTube-Chatbot is a small Retrieval-Augmented Generation (RAG) demo that lets you ask questions about YouTube content and get concise, conversational answers. The project includes a simple backend for processing and fetching data and a Streamlit-based frontend for interacting with the chatbot.
+**Drop in a YouTube link, and ask it questions like it's a document.**
 
-**This repository is a minimal example — customize and secure it before using in production.**
+Instead of watching an hour-long video to find the one part you care about, this app downloads the audio, transcribes it with Whisper, embeds it into a vector store, and lets you ask questions that get answered strictly from what was actually said in the video — with each video kept as its own persistent, revisitable chat thread.
 
-**Features**
+🔗 **[Demo Video](https://www.youtube.com/watch?v=KJU-t2OfvoQ)**
 
-- **RAG-style answers:** Uses retrieved YouTube content as context for generated responses.
-- **Streamlit UI:** Lightweight frontend for quick interaction and testing.
-- **Pluggable backends:** `backend.py` holds the data/retrieval logic; adapt it to your APIs or vector store.
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?logo=streamlit&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20Memory-1C3C3C)
+![Whisper](https://img.shields.io/badge/Whisper-Transcription-412991?logo=openai&logoColor=white)
+![FAISS](https://img.shields.io/badge/FAISS-Vector%20Search-3776AB)
+![Gemini](https://img.shields.io/badge/Gemini-2.5--flash--lite-4285F4?logo=googlegemini&logoColor=white)
 
-**Requirements**
+---
 
-- Python 3.10+ (recommended)
-- See `requirements.txt` for Python dependencies
+## Why This Project
 
-**Quickstart**
+Video is a slow way to search for information — there's no Ctrl+F for something someone said 40 minutes into a talk. This project turns any YouTube video into a queryable knowledge base: it strips the audio, transcribes it locally with Whisper, chunks and embeds the transcript, and answers questions using only retrieved context from that transcript — so answers stay grounded in what was actually said, not the model's general knowledge.
 
-1. Create and activate a virtual environment (Windows PowerShell):
+Each video gets its own LangGraph thread (keyed by video ID), checkpointed to SQLite, so past transcripts and conversations persist and can be reopened from the sidebar instead of being reprocessed every time.
 
-   ```powershell
-   python -m venv .venv; .\.venv\Scripts\Activate.ps1
-   ```
-
-2. Install dependencies:
-
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
-3. Create a `.env` file in the project root and add your keys (example below).
-
-4. Start the backend (if applicable):
-
-   ```powershell
-   python backend.py
-   ```
-
-5. Start the frontend UI:
-
-   ```powershell
-   streamlit run frontend.py
-   ```
-
-6. Open the Streamlit app in your browser (usually `http://localhost:8501`).
-
-**Environment variables (.env example)**
-Do not commit secrets to source control. Example `.env` contents:
+## How It Works
 
 ```
-YOUTUBE_API_KEY=your_youtube_api_key
-OPENAI_API_KEY=your_openai_api_key
-# Optional: configure other keys or endpoints used by backend.py
-# VECTOR_STORE_PATH=./data/vectors
+YouTube URL
+     │
+     ▼
+yt-dlp — download audio
+     │
+     ▼
+Whisper — transcribe audio to text
+     │
+     ▼
+RecursiveCharacterTextSplitter — chunk transcript
+     │
+     ▼
+Gemini Embeddings + FAISS — build a per-video vector store
+     │
+     ▼
+User Question
+     │
+     ▼
+FAISS retriever — top-k relevant transcript chunks
+     │
+     ▼
+Gemini 2.5 Flash-Lite — "Answer ONLY from the transcript context"
+     │
+     ▼
+Answer streamed to Streamlit chat UI
 ```
 
-Replace the variable names and values with those expected by your copy of `backend.py` and `frontend.py`.
+## Key Features
 
-**Project structure**
+- **Video → knowledge base pipeline** — automatic audio download (`yt-dlp`), local transcription (`Whisper`), chunking, and embedding into a FAISS vector store, all triggered by pasting a URL
+- **Context-grounded answers** — the LLM is explicitly prompted to answer only from retrieved transcript context, reducing hallucinated answers about video content
+- **Per-video persistent threads** — each video's transcript, vector store, and conversation history are checkpointed to SQLite (`YouTubeChatbot.db`) under a thread ID derived from the video ID
+- **Revisit past videos instantly** — previously processed videos appear in the sidebar; reopening one reloads its transcript, vector store, and full chat history without reprocessing
+- **Portable vector stores** — FAISS indexes are serialized to raw bytes and stored directly in the LangGraph state, so no separate vector DB service is required
 
-- `backend.py` : Retrieval, data fetching, or API logic.
-- `frontend.py`: Streamlit UI for the chatbot.
-- `requirements.txt`: Python package dependencies.
-- `.env`: Local environment variables (gitignored).
+## Tech Stack
 
-**Usage**
+| Layer | Technology |
+|---|---|
+| UI | Streamlit |
+| Agent orchestration | LangGraph (`StateGraph`) |
+| Conversation & vector store memory | LangGraph `SqliteSaver` checkpointer + SQLite |
+| Audio download | `yt-dlp` |
+| Transcription | OpenAI Whisper (local) |
+| Embeddings | Gemini `text-embedding-004` |
+| Vector search | FAISS |
+| LLM | Google Gemini `2.5-flash-lite` via `langchain-google-genai` |
 
-- Use the Streamlit UI to enter a YouTube link, paste text, or ask a question (depends on how `backend.py` is implemented).
-- The app will retrieve relevant context and generate an answer using the configured LLM.
+## Repo Structure
 
-**Troubleshooting**
+```
+YouTube-Chatbot/
+├── backend.py         # Video ID extraction, audio download, Whisper transcription,
+│                       #  FAISS vector store, LangGraph QA graph, thread management
+├── frontend.py         # Streamlit UI: URL input, sidebar of past videos, chat interface
+└── requirements.txt
+```
 
-- If `streamlit run frontend.py` fails, ensure Streamlit is installed and your virtual environment is active.
-- If you see errors about missing API keys, confirm that `.env` contains the expected variables and that your code reads them (e.g., via `python-dotenv`).
-- If ports are in use, specify an alternate Streamlit port: `streamlit run frontend.py --server.port 8502`.
+## Setup
 
-**Security & privacy**
+### Prerequisites
+- Python 3.10+
+- [FFmpeg](https://ffmpeg.org/download.html) installed and available on your system
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) installed and available on your system
+- A [Google Gemini API key](https://makersuite.google.com/app/apikey)
 
-- Never commit `.env` or any secret keys to the repository.
-- Consider adding rate limits and input sanitization before exposing the app publicly.
+### 1. Clone the repository
 
-**Contributing**
+```bash
+git clone https://github.com/PalTrivedi/YouTube-Chatbot.git
+cd YouTube-Chatbot
+```
 
-- Fork the repo, make changes on a feature branch, and open a pull request. Describe the change and include testing steps.
+### 2. Install dependencies
 
-**License**
+```bash
+pip install -r requirements.txt
+```
 
-- No license specified
+### 3. Configure FFmpeg and yt-dlp paths
 
---- Pal Trivedi
+`backend.py` currently points at hardcoded local paths for `ffmpeg` and `yt-dlp`:
+
+```python
+FFMPEG_PATH = r"C:/Users/HP/Downloads/ffmpeg-8.0-essentials_build/bin/ffmpeg.exe"
+YTDLP_PATH = r"D:/Test/venv/Scripts/yt-dlp.exe"
+```
+
+Update these to match where FFmpeg and yt-dlp are installed on your machine (or update the code to resolve them from your `PATH` instead).
+
+### 4. Configure environment variables
+
+Create a `.env` file in the repo root:
+```
+GOOGLE_API_KEY=your_gemini_api_key_here
+```
+
+## Run
+
+```bash
+streamlit run frontend.py
+```
+
+The app opens in your browser (default `http://localhost:8501`). Paste a YouTube URL, click **Fetch Transcript**, and once processing finishes, ask questions about the video in the chat box. Previously processed videos are listed in the sidebar for instant reopening.
+
+## Limitations & Future Work
+
+- `FFMPEG_PATH` and `YTDLP_PATH` are hardcoded to a specific machine's file paths and need to be updated per environment
+- Transcription runs synchronously in the Streamlit request, so processing long videos will block the UI
+- Whisper's `base` model trades accuracy for speed; larger models would improve transcript quality at the cost of processing time
+- No transcript caching keyed by video content changes — reprocessing the same video always redownloads and retranscribes
+- Next steps: background/async transcript processing with a progress indicator, configurable Whisper model size, and auto-resolving FFmpeg/yt-dlp paths from the system `PATH`
+
+## Security & Privacy
+
+- Never commit your `.env` file or API keys to source control
+- Downloaded audio is deleted after transcription, but transcripts and vector stores persist in `YouTubeChatbot.db` — treat that file as containing the content of every video you've processed
+
+## License
+
+MIT — feel free to fork and adapt.
+
+## Author
+
+Built by **Pal Trivedi**. Feedback and PRs welcome.
